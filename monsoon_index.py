@@ -97,7 +97,7 @@ def main():
     )
     parser.add_argument(
         "--output-csv",
-        default="/Users/jiandachen/Projects/e3sm_diags/e3sm_diags_results/prov/monsoon_index.csv",
+        default=None,
         help="Path to output CSV to append results.",
     )
     args = parser.parse_args()
