@@ -22,7 +22,9 @@ source /global/common/software/e3sm/anaconda_envs/load_latest_e3sm_unified_pm-cp
 #zppy -c post.spcam_tropical.cfg
 #zppy -c post.resmlp_spatial0.25_bs4.cfg
 #zppy -c post.resmlp_spatial0.25_bs4_seed1215.cfg
-zppy -c post.resmlp_spatial0.25_bs4_seed1_longer.cfg
+zppy -c post.er_meanrange_std_capped.cfg
+#zppy -c post.resmlp_spatial0.25_bs4_seed1_longer.cfg
+#zppy -c post.er0.25_tropical_seed1.cfg
 #zppy -c post.resmlp_spatial0.25_bs4_seed1.cfg
 #zppy -c post.resmlp_spatial1.0_bs1.cfg
 #zppy -c post.rescu_spatial0.3_bs8.cfg

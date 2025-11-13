@@ -19,8 +19,8 @@ def process_file(file_path):
     )
 
     #required_vars = ['time', 'date', 'datesec', 'time_bnds', 'PRECT', 'FLUT', 'U850']
-    #required_vars = ['time', 'date', 'datesec', 'time_bnds', 'cp', 'FLUT', 'U850', 'TMQ']
-    required_vars = ['time', 'date', 'datesec', 'time_bnds', 'PRECT', 'FLUT', 'U850', 'TMQ']
+    required_vars = ['time', 'date', 'datesec', 'time_bnds', 'cp', 'FLUT', 'U850', 'TMQ']
+    #required_vars = ['time', 'date', 'datesec', 'time_bnds', 'PRECT', 'FLUT', 'U850', 'TMQ']
     #required_vars = ['time', 'date', 'datesec', 'time_bnds', 'PRECT', 'FLUT', 'U850', 'TMQ']
     ds = ds[required_vars]
 
@@ -29,7 +29,7 @@ def process_file(file_path):
     #ds = ds.drop_vars('UL')
 
     # 改名
-    #ds = ds.rename({'cp': 'PRECT'})
+    ds = ds.rename({'cp': 'PRECT'})
 
     # 重采样为每日平均
     daily_ds = ds.resample(time='1D').mean()

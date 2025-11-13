@@ -65,7 +65,8 @@ def process_file(file_path):
     return daily_ds
 
 def main():
-    for year in range(1998,2004):
+    #for year in range(1998,2004):
+    for year in range(1998,1999):
         #file_pattern = f'/share1/x-w19/raw-spcam-data/spcam_std_rad.cam.h1.{year}-*.nc'
         #file_pattern = f'/share3/chenj209/raw_spcam_data/spcam_std_rad.cam.h1.{year}-*.nc'
         #file_pattern = f'/pscratch/sd/c/chenjd21/online_simulation_nc_data/er_mix1.0_std/conv_mem_spinup5.cam.h1.{year}-01-01-00000.nc'
@@ -73,7 +74,8 @@ def main():
         #file_pattern = f'/pscratch/sd/c/chenjd21/online_simulation_nc_data/nncam/conv_mem_share3.cam.h1.{year}-*.nc'
         #file_pattern = f'/pscratch/sd/c/chenjd21/NNCAM_INTEL_20250710_1114_F_2000_SPCAM_m2005_f19_g16/run/NNCAM_INTEL_20250710_1114_F_2000_SPCAM_m2005_f19_g16.cam.h1.{year}-*.nc'
         #file_pattern = f'/pscratch/sd/c/chenjd21/case-arch.20250828-0609-12years/atm/hist/NNCAM_NSCC_20250820_1440_F_2000_SPCAM_m2005_f19_g16.cam.h1.{year}-*.nc'
-        file_pattern = f'/global/cfs/cdirs/m2136/chenjd21/online_simulation_nc_data/er1_resmlp_spatial0.25_bs4_local_sample12_longer_6years/NNCAM_GPU_20250916_0003_F_2000_SPCAM_m2005_f19_g16.cam.h1.{year}-*.nc'
+        #file_pattern = f'/global/cfs/cdirs/m2136/chenjd21/online_simulation_nc_data/er1_resmlp_spatial0.25_bs4_local_sample12_longer_6years/NNCAM_GPU_20250916_0003_F_2000_SPCAM_m2005_f19_g16.cam.h1.{year}-*.nc'
+        file_pattern = f'/global/cfs/cdirs/m2136/chenjd21/online_simulation_nc_data/er1215_resmlp_spatial0.25_bs4_local_sample12/NNCAM_GPU_20250829_0645_F_2000_SPCAM_m2005_f19_g16.cam.h1.{year}-*.nc'
         file_list = sorted(glob.glob(file_pattern))
 
         if not file_list:
@@ -120,8 +122,8 @@ def main():
         #output_file = f'conv_mem_share3.cam.h2.{year}-01.nc'
         #output_file = f'NNCAM_INTEL_20250710_1114_F_2000_SPCAM_m2005_f19_g16.cam.h2.{year}-01.nc'
         #output_file = f'NNCAM_NSCC_20250820_1440_F_2000_SPCAM_m2005_f19_g16.cam.h2.{year}-01.nc'
-        output_file = f'NNCAM_GPU_20250916_0003_F_2000_SPCAM_m2005_f19_g16.cam.h2.{year}-01.nc'
-
+        #output_file = f'NNCAM_GPU_20250916_0003_F_2000_SPCAM_m2005_f19_g16.cam.h2.{year}-01.nc'
+        output_file = f'NNCAM_GPU_20250829_0645_F_2000_SPCAM_m2005_f19_g16.cam.h2.{year}-01.nc'
         print(f"\n💾 Saving combined dataset to: {output_file}")
         combined_ds.to_netcdf(output_file)
 
