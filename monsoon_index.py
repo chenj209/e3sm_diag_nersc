@@ -75,8 +75,8 @@ def main():
     parser.add_argument(
         "--season",
         choices=["JJA", "DJF"],
-        default="JJA",
-        help="Season configuration to use: JJA (summer) or DJF (winter).",
+        default=None,
+        help="Season configuration to use: JJA (summer) or DJF (winter). If omitted, both will be computed.",
     )
     parser.add_argument(
         "--start-year",
@@ -102,14 +102,7 @@ def main():
     )
     args = parser.parse_args()
 
-    if args.season == "JJA":
-        months = [6, 7, 8]
-        target_pressure = 850
-    else:
-        months = [12, 1, 2]
-        target_pressure = 500
-    if args.verbose:
-        print(f"       Using season: {args.season}; months={months}; target pressure={target_pressure} hPa")
+    # Dataset open and coord detection are shared across seasons
 
     t0 = time.perf_counter()
     if args.verbose:
@@ -145,8 +138,160 @@ def main():
         except Exception:
             pass
 
+    # If no season specified, compute both JJA and DJF sequentially and return
+    if args.season is None:
+        for season in ("JJA", "DJF"):
+            months = [6, 7, 8] if season == "JJA" else [12, 1, 2]
+            target_pressure = 850 if season == "JJA" else 500
+            if args.verbose:
+                print(f"\n=== Season {season} ===")
+                print(f"Using months={months}; target pressure={target_pressure} hPa")
+
+            if args.verbose:
+                print(f"[3/9] Selecting U at ~{target_pressure} hPa (nearest)")
+            t_sel0 = time.perf_counter()
+            u_sel, lev_index, lev_value = select_u_at_pressure(u, target_pressure)
+            t_sel1 = time.perf_counter()
+            if args.verbose:
+                print(f"       Selected level index={lev_index}, value={lev_value:.1f} hPa in {t_sel1 - t_sel0:.3f}s")
+
+            # Normalize longitude to 0–360 and sort
+            if args.verbose:
+                try:
+                    lonv = u_sel[lon_name].values
+                    print(f"[4/9] Normalizing longitudes to 0-360 (pre-range: {float(lonv.min()):.3f}..{float(lonv.max()):.3f})")
+                except Exception:
+                    print("[4/9] Normalizing longitudes to 0-360")
+            u_sel = ensure_lon_0_360(u_sel, lon_name)
+            if args.verbose:
+                lonv2 = u_sel[lon_name].values
+                print(f"       Post-range: {float(lonv2.min()):.3f}..{float(lonv2.max()):.3f}")
+
+            # Regions by season
+            if args.verbose:
+                print("[5/9] Subsetting region(s)")
+            if season == "JJA":
+                uA = subset_lat_band(u_sel, lat_name, 10.0, 20.0).sel({lon_name: slice(100.0, 150.0)})
+                if args.verbose:
+                    print("       Region A (10-20N, 100-150E)")
+                uB = subset_lat_band(u_sel, lat_name, 25.0, 35.0).sel({lon_name: slice(100.0, 150.0)})
+                if args.verbose:
+                    print("       Region B (25-35N, 100-150E)")
+            else:
+                uA = subset_lat_band(u_sel, lat_name, 25.0, 35.0).sel({lon_name: slice(80.0, 120.0)})
+                uB = subset_lat_band(u_sel, lat_name, 50.0, 60.0).sel({lon_name: slice(80.0, 120.0)})
+                if args.verbose:
+                    print("       Region A (25-35N, 80-120E)")
+                    print("       Region B (50-60N, 80-120E)")
+
+            # Per-year computation
+            time_name = None
+            for cand in ("time", "Time"):
+                if cand in uA.dims or cand in uA.coords:
+                    time_name = cand
+                    break
+
+            if time_name is None:
+                # No time dimension; compute single values
+                if args.verbose:
+                    print("[7/9] Computing cosine-weighted means (no time dimension)")
+                mean_A = compute_weighted_mean(uA, lat_name)
+                mean_B = compute_weighted_mean(uB, lat_name)
+                diff = mean_A - mean_B
+                print(f"File: {args.input}")
+                print(f"Season {season} | Level index: {lev_index}, value: {lev_value:.1f} hPa")
+                print(f"A mean: {mean_A:.4f} m/s, B mean: {mean_B:.4f} m/s, A-B: {diff:.4f} m/s")
+                continue
+
+            if args.verbose:
+                print("[7/9] Filtering months and computing per-year indices")
+            month_mask = uA[time_name].dt.month.isin(months)
+            uA_sel = uA.sel({time_name: month_mask})
+            uB_sel = uB.sel({time_name: month_mask})
+
+            series_A = compute_weighted_space_mean_timeseries(uA_sel, lat_name, lon_name)
+            series_B = compute_weighted_space_mean_timeseries(uB_sel, lat_name, lon_name)
+
+            wraps_year = (12 in months) and any(m <= 2 for m in months)
+            if args.verbose:
+                if wraps_year:
+                    print("       Detected cross-year months; assigning December to next year's season.")
+                else:
+                    print("       No cross-year wrap; grouping by calendar year.")
+
+            if wraps_year:
+                season_year = series_A[time_name].dt.year + xr.where(series_A[time_name].dt.month == 12, 1, 0)
+                mean_A_year = series_A.groupby(season_year).mean()
+                mean_B_year = series_B.groupby(season_year).mean()
+            else:
+                mean_A_year = series_A.groupby(f"{time_name}.year").mean()
+                mean_B_year = series_B.groupby(f"{time_name}.year").mean()
+            diff_year = mean_A_year - mean_B_year
+            group_dim = list(mean_A_year.dims)[0]
+            years = mean_A_year[group_dim].values
+
+            years_np = np.array(years, dtype=int)
+            mask = np.ones_like(years_np, dtype=bool)
+            if args.start_year is not None:
+                mask &= years_np >= args.start_year
+            if args.end_year is not None:
+                mask &= years_np <= args.end_year
+            years_f = years_np[mask]
+            mean_A_vals = mean_A_year.values[mask]
+            mean_B_vals = mean_B_year.values[mask]
+            diff_vals = diff_year.values[mask]
+
+            print(f"File: {args.input}")
+            print(f"Season {season} | Selected level index: {lev_index}, level value: {lev_value:.1f} hPa")
+            for i, year in enumerate(years_f):
+                a_val = float(mean_A_vals[i])
+                b_val = float(mean_B_vals[i])
+                d_val = float(diff_vals[i])
+                print(f"{season} Year {int(year)}: A={a_val:.4f} m/s, B={b_val:.4f} m/s, A-B={d_val:.4f} m/s")
+
+            if years_f.size > 0:
+                final_mean = float(np.nanmean(diff_vals))
+                yr_min = int(years_f.min())
+                yr_max = int(years_f.max())
+                print(f"{season} final mean monsoon index over years {yr_min}-{yr_max}: {final_mean:.4f} m/s")
+            else:
+                print(f"{season}: No years remaining after filter; final mean not computed.")
+
+            if args.output_csv is not None:
+                if args.verbose:
+                    print("[9/9] Writing yearly results to CSV")
+                out_dir = os.path.dirname(args.output_csv)
+                if out_dir:
+                    os.makedirs(out_dir, exist_ok=True)
+                write_header = not (os.path.exists(args.output_csv) and os.path.getsize(args.output_csv) > 0)
+                with open(args.output_csv, "a", newline="", encoding="utf-8") as f:
+                    writer = csv.writer(f)
+                    if write_header:
+                        writer.writerow(
+                            ["file", "year", "months", "lev_index", "lev_value_hPa", "mean_A", "mean_B", "diff_A_minus_B"]
+                        )
+                    for i, year in enumerate(years_f):
+                        writer.writerow([
+                            args.input,
+                            int(year),
+                            season,
+                            lev_index,
+                            f"{lev_value:.1f}",
+                            f"{float(mean_A_vals[i]):.6f}",
+                            f"{float(mean_B_vals[i]):.6f}",
+                            f"{float(diff_vals[i]):.6f}",
+                        ])
+        return
+    # Single-season path continues here
+    if args.season == "JJA":
+        months = [6, 7, 8]
+        target_pressure = 850
+    else:
+        months = [12, 1, 2]
+        target_pressure = 500
     if args.verbose:
-        print(f"[3/9] Selecting U at ~{target_pressure} hPa (nearest)")
+        print(f"       Using season: {args.season}; months={months}; target pressure={target_pressure} hPa")
+        print("[3/9] Selecting U at ~{target_pressure} hPa (nearest)")
     t_sel0 = time.perf_counter()
     u_sel, lev_index, lev_value = select_u_at_pressure(u, target_pressure)
     t_sel1 = time.perf_counter()
