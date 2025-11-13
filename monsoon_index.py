@@ -97,7 +97,7 @@ def main():
     )
     parser.add_argument(
         "--output-csv",
-        default=None,
+        default="/Users/jiandachen/Projects/e3sm_diags/e3sm_diags_results/prov/monsoon_index.csv",
         help="Path to output CSV to append results.",
     )
     args = parser.parse_args()
@@ -157,9 +157,9 @@ def main():
     if args.verbose:
         try:
             lonv = u_sel[lon_name].values
-            print(f"[4/9] Normalizing longitudes to 0–360 (pre-range: {float(lonv.min()):.3f}..{float(lonv.max()):.3f})")
+            print(f"[4/9] Normalizing longitudes to 0-360 (pre-range: {float(lonv.min()):.3f}..{float(lonv.max()):.3f})")
         except Exception:
-            print("[4/9] Normalizing longitudes to 0–360")
+            print("[4/9] Normalizing longitudes to 0-360")
     u_sel = ensure_lon_0_360(u_sel, lon_name)
     if args.verbose:
         lonv2 = u_sel[lon_name].values
@@ -170,20 +170,23 @@ def main():
     #   A: 10–20N, 100–150E
     #   B: 25–35N, 100–150E
     # DJF:
-    #   Single region: 25–35N, 80–120E
+    #   A: 25–35N, 80–120E
+    #   B: 50–60N, 80–120E
     if args.verbose:
         print("[5/9] Subsetting region(s)")
     if args.season == "JJA":
         uA = subset_lat_band(u_sel, lat_name, 10.0, 20.0).sel({lon_name: slice(100.0, 150.0)})
         if args.verbose:
-            print("       Region A (10–20N, 100–150E)")
+            print("       Region A (10-20N, 100-150E)")
         uB = subset_lat_band(u_sel, lat_name, 25.0, 35.0).sel({lon_name: slice(100.0, 150.0)})
         if args.verbose:
-            print("       Region B (25–35N, 100–150E)")
+            print("       Region B (25-35N, 100-150E)")
     else:
         uA = subset_lat_band(u_sel, lat_name, 25.0, 35.0).sel({lon_name: slice(80.0, 120.0)})
+        uB = subset_lat_band(u_sel, lat_name, 50.0, 60.0).sel({lon_name: slice(80.0, 120.0)})
         if args.verbose:
-            print("       Region (25–35N, 80–120E)")
+            print("       Region A (25-35N, 80-120E)")
+            print("       Region B (50-60N, 80-120E)")
 
     # Branch on time dimension: per-year computation if time present
     time_name = None
@@ -200,10 +203,14 @@ def main():
         uA_sel = uA.sel({time_name: month_mask})
         if args.season == "JJA":
             uB_sel = uB.sel({time_name: month_mask})
+        else:
+            uB_sel = uB.sel({time_name: month_mask})
 
         # Space-mean time series
         series_A = compute_weighted_space_mean_timeseries(uA_sel, lat_name, lon_name)
         if args.season == "JJA":
+            series_B = compute_weighted_space_mean_timeseries(uB_sel, lat_name, lon_name)
+        else:
             series_B = compute_weighted_space_mean_timeseries(uB_sel, lat_name, lon_name)
 
         # Determine if months wrap across year boundary (e.g., DJF: 12,1,2)
@@ -215,25 +222,16 @@ def main():
                 print("       No cross-year wrap; grouping by calendar year.")
 
         # Group by season year: if wraps_year, December belongs to next year
-        if args.season == "JJA":
-            if wraps_year:
-                season_year = series_A[time_name].dt.year + xr.where(series_A[time_name].dt.month == 12, 1, 0)
-                mean_A_year = series_A.groupby(season_year).mean()
-                mean_B_year = series_B.groupby(season_year).mean()
-            else:
-                mean_A_year = series_A.groupby(f"{time_name}.year").mean()
-                mean_B_year = series_B.groupby(f"{time_name}.year").mean()
-            diff_year = mean_A_year - mean_B_year
-            group_dim = list(mean_A_year.dims)[0]
-            years = mean_A_year[group_dim].values
+        if wraps_year:
+            season_year = series_A[time_name].dt.year + xr.where(series_A[time_name].dt.month == 12, 1, 0)
+            mean_A_year = series_A.groupby(season_year).mean()
+            mean_B_year = series_B.groupby(season_year).mean()
         else:
-            if wraps_year:
-                season_year = series_A[time_name].dt.year + xr.where(series_A[time_name].dt.month == 12, 1, 0)
-                mean_idx_year = series_A.groupby(season_year).mean()
-            else:
-                mean_idx_year = series_A.groupby(f"{time_name}.year").mean()
-            group_dim = list(mean_idx_year.dims)[0]
-            years = mean_idx_year[group_dim].values
+            mean_A_year = series_A.groupby(f"{time_name}.year").mean()
+            mean_B_year = series_B.groupby(f"{time_name}.year").mean()
+        diff_year = mean_A_year - mean_B_year
+        group_dim = list(mean_A_year.dims)[0]
+        years = mean_A_year[group_dim].values
 
         # Apply year filtering
         years_np = np.array(years, dtype=int)
@@ -248,12 +246,9 @@ def main():
                       f"{args.start_year if args.start_year is not None else years_np.min()} - "
                       f"{args.end_year if args.end_year is not None else years_np.max()}")
         years_f = years_np[mask]
-        if args.season == "JJA":
-            mean_A_vals = mean_A_year.values[mask]
-            mean_B_vals = mean_B_year.values[mask]
-            diff_vals = (diff_year.values[mask])
-        else:
-            index_vals = (mean_idx_year.values[mask])
+        mean_A_vals = mean_A_year.values[mask]
+        mean_B_vals = mean_B_year.values[mask]
+        diff_vals = (diff_year.values[mask])
 
         if args.verbose:
             print("[8/9] Computing yearly monsoon index")
@@ -261,20 +256,15 @@ def main():
 
         print(f"File: {args.input}")
         print(f"Selected level index: {lev_index}, level value: {lev_value:.1f} hPa")
-        if args.season == "JJA":
-            for i, year in enumerate(years_f):
-                a_val = float(mean_A_vals[i])
-                b_val = float(mean_B_vals[i])
-                d_val = float(diff_vals[i])
-                print(f"Year {int(year)}: A={a_val:.4f} m/s, B={b_val:.4f} m/s, A-B={d_val:.4f} m/s")
-        else:
-            for i, year in enumerate(years_f):
-                idx_val = float(index_vals[i])
-                print(f"Year {int(year)}: index={idx_val:.4f} m/s")
+        for i, year in enumerate(years_f):
+            a_val = float(mean_A_vals[i])
+            b_val = float(mean_B_vals[i])
+            d_val = float(diff_vals[i])
+            print(f"Year {int(year)}: A={a_val:.4f} m/s, B={b_val:.4f} m/s, A-B={d_val:.4f} m/s")
 
         # Final multi-year mean of the yearly monsoon index
         if years_f.size > 0:
-            final_mean = float(np.nanmean(diff_vals if args.season == "JJA" else index_vals))
+            final_mean = float(np.nanmean(diff_vals))
             yr_min = int(years_f.min())
             yr_max = int(years_f.max())
             print(f"Final mean monsoon index over years {yr_min}-{yr_max}: {final_mean:.4f} m/s")
@@ -284,41 +274,27 @@ def main():
         # Write CSV rows per year
         if args.verbose:
             print("[9/9] Writing yearly results to CSV")
-        if args.output_csv:
-            out_dir = os.path.dirname(args.output_csv)
-            if out_dir:
-                os.makedirs(out_dir, exist_ok=True)
-            write_header = not (os.path.exists(args.output_csv) and os.path.getsize(args.output_csv) > 0)
-            with open(args.output_csv, "a", newline="", encoding="utf-8") as f:
-                writer = csv.writer(f)
-                if write_header:
-                    writer.writerow(
-                        ["file", "year", "months", "lev_index", "lev_value_hPa", "mean_A", "mean_B", "diff_A_minus_B"]
-                    )
-                if args.season == "JJA":
-                    for i, year in enumerate(years_f):
-                        writer.writerow([
-                            args.input,
-                            int(year),
-                            args.season,
-                            lev_index,
-                            f"{lev_value:.1f}",
-                            f"{float(mean_A_vals[i]):.6f}",
-                            f"{float(mean_B_vals[i]):.6f}",
-                            f"{float(diff_vals[i]):.6f}",
-                        ])
-                else:
-                    for i, year in enumerate(years_f):
-                        writer.writerow([
-                            args.input,
-                            int(year),
-                            args.season,
-                            lev_index,
-                            f"{lev_value:.1f}",
-                            f"{float(index_vals[i]):.6f}",
-                            "",
-                            "",
-                        ])
+        out_dir = os.path.dirname(args.output_csv)
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        write_header = not (os.path.exists(args.output_csv) and os.path.getsize(args.output_csv) > 0)
+        with open(args.output_csv, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            if write_header:
+                writer.writerow(
+                    ["file", "year", "months", "lev_index", "lev_value_hPa", "mean_A", "mean_B", "diff_A_minus_B"]
+                )
+            for i, year in enumerate(years_f):
+                writer.writerow([
+                    args.input,
+                    int(year),
+                    args.season,
+                    lev_index,
+                    f"{lev_value:.1f}",
+                    f"{float(mean_A_vals[i]):.6f}",
+                    f"{float(mean_B_vals[i]):.6f}",
+                    f"{float(diff_vals[i]):.6f}",
+                ])
         if args.verbose:
             t1 = time.perf_counter()
             print(f"Done in {t1 - t0:.3f}s")
@@ -338,8 +314,8 @@ def main():
 
         print(f"File: {args.input}")
         print(f"Selected level index: {lev_index}, level value: {lev_value:.1f} hPa")
-        print(f"Region A (10–20N, 100–150E) U850 mean: {mean_A:.4f} m/s")
-        print(f"Region B (25–35N, 100–150E) U850 mean: {mean_B:.4f} m/s")
+        print(f"Region A (10-20N, 100-150E) U850 mean: {mean_A:.4f} m/s")
+        print(f"Region B (25-35N, 100-150E) U850 mean: {mean_B:.4f} m/s")
         print(f"Difference (A - B): {diff:.4f} m/s")
 
         # Write CSV
