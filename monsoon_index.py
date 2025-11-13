@@ -97,7 +97,7 @@ def main():
     )
     parser.add_argument(
         "--output-csv",
-        default="/Users/jiandachen/Projects/e3sm_diags/e3sm_diags_results/prov/monsoon_index.csv",
+        default=None,
         help="Path to output CSV to append results.",
     )
     args = parser.parse_args()
@@ -284,40 +284,41 @@ def main():
         # Write CSV rows per year
         if args.verbose:
             print("[9/9] Writing yearly results to CSV")
-        out_dir = os.path.dirname(args.output_csv)
-        if out_dir:
-            os.makedirs(out_dir, exist_ok=True)
-        write_header = not (os.path.exists(args.output_csv) and os.path.getsize(args.output_csv) > 0)
-        with open(args.output_csv, "a", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            if write_header:
-                writer.writerow(
-                    ["file", "year", "months", "lev_index", "lev_value_hPa", "mean_A", "mean_B", "diff_A_minus_B"]
-                )
-            if args.season == "JJA":
-                for i, year in enumerate(years_f):
-                    writer.writerow([
-                        args.input,
-                        int(year),
-                        args.season,
-                        lev_index,
-                        f"{lev_value:.1f}",
-                        f"{float(mean_A_vals[i]):.6f}",
-                        f"{float(mean_B_vals[i]):.6f}",
-                        f"{float(diff_vals[i]):.6f}",
-                    ])
-            else:
-                for i, year in enumerate(years_f):
-                    writer.writerow([
-                        args.input,
-                        int(year),
-                        args.season,
-                        lev_index,
-                        f"{lev_value:.1f}",
-                        f"{float(index_vals[i]):.6f}",
-                        "",
-                        "",
-                    ])
+        if args.output_csv:
+            out_dir = os.path.dirname(args.output_csv)
+            if out_dir:
+                os.makedirs(out_dir, exist_ok=True)
+            write_header = not (os.path.exists(args.output_csv) and os.path.getsize(args.output_csv) > 0)
+            with open(args.output_csv, "a", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                if write_header:
+                    writer.writerow(
+                        ["file", "year", "months", "lev_index", "lev_value_hPa", "mean_A", "mean_B", "diff_A_minus_B"]
+                    )
+                if args.season == "JJA":
+                    for i, year in enumerate(years_f):
+                        writer.writerow([
+                            args.input,
+                            int(year),
+                            args.season,
+                            lev_index,
+                            f"{lev_value:.1f}",
+                            f"{float(mean_A_vals[i]):.6f}",
+                            f"{float(mean_B_vals[i]):.6f}",
+                            f"{float(diff_vals[i]):.6f}",
+                        ])
+                else:
+                    for i, year in enumerate(years_f):
+                        writer.writerow([
+                            args.input,
+                            int(year),
+                            args.season,
+                            lev_index,
+                            f"{lev_value:.1f}",
+                            f"{float(index_vals[i]):.6f}",
+                            "",
+                            "",
+                        ])
         if args.verbose:
             t1 = time.perf_counter()
             print(f"Done in {t1 - t0:.3f}s")
